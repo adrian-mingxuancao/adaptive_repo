@@ -1,0 +1,25 @@
+# Core training stack. Install versions compatible with the target CUDA/PyTorch
+# environment; exact cluster images used for the experiments are documented in
+# README.md because GPU/CUDA constraints are hardware-specific.
+accelerate
+datasets
+deepspeed
+pandas
+peft
+torch
+transformers
+trl
+vllm
+wandb
+
+# Molecule rewards and evaluation.
+rdkit
+scikit-learn
+scipy
+tqdm
+
+# Analysis and figure generation.
+matplotlib
+numpy
+pillow
+pyyaml
