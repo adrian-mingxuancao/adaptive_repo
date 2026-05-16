@@ -1,0 +1,151 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N ada_repo_3B
+#PBS -j oe
+
+# ==============================================
+# AdaRePO Training - Qwen2.5-3B-Instruct
+# Adaptive Reference-guided Policy Optimization
+# Polaris 4x A100 40GB
+# 3 GPUs for DeepSpeed ZeRO-3 training
+# 1 GPU for vLLM generation
+# ==============================================
+
+set -euo pipefail
+
+# ---- Paths ----
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+MODEL_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/Qwen2.5-3B-Instruct
+
+# ---- Redirect output to job-specific log ----
+LOG_DIR=${ADA_DIR}/logs
+mkdir -p ${LOG_DIR}
+exec > ${LOG_DIR}/ada_repo_3B_${PBS_JOBID}.log 2>&1
+
+# ---- Environment setup ----
+export PATH="${ENV_DIR}/bin:${PATH}"
+# Need both RePO src (for XGRPOTrainer, rewards) and adaptive_repo dir (for our modules)
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+
+# CUDA_HOME: DeepSpeed needs this
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+
+# DS_SKIP_CUDA_CHECK: system CUDA 12.9 vs torch CUDA 12.4 mismatch
+export DS_SKIP_CUDA_CHECK=1
+
+# HuggingFace cache
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+# ALCF Proxy (required for internet access on compute nodes)
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+# WandB
+export WANDB_MODE=online
+export WANDB_DIR=${ADA_DIR}/logs
+
+# Networking
+export NCCL_DEBUG=WARN
+export NCCL_COLLNET_ENABLE=0
+export MASTER_ADDR=localhost
+export MASTER_PORT=29501
+
+# Memory
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OPENBLAS_NUM_THREADS=1
+
+# ---- Change to RePO directory (data paths are relative to it) ----
+cd ${REPO_DIR}
+
+# ---- Create output dirs ----
+mkdir -p ${ADA_DIR}/logs
+mkdir -p ${ADA_DIR}/output/ada_repo_3B
+
+echo "=============================================="
+echo "AdaRePO Training - Qwen2.5-3B-Instruct"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "GPUs: $(nvidia-smi -L 2>/dev/null | wc -l)"
+echo "=============================================="
+
+# ---- Install flash-attn if not present ----
+python -c "import flash_attn; print('flash-attn:', flash_attn.__version__)" 2>/dev/null || {
+    echo "Installing flash-attn on compute node..."
+    pip install flash-attn --no-build-isolation 2>&1 | tail -10 || echo "flash-attn install failed, will use sdpa attention"
+}
+
+# ---- Verify environment ----
+echo "Python: $(python --version)"
+echo "PyTorch: $(python -c 'import torch; print(torch.__version__)')"
+echo "TRL: $(python -c 'import trl; print(trl.__version__)')"
+echo "vLLM: $(python -c 'import vllm; print(vllm.__version__)')"
+echo "DeepSpeed: $(python -c 'import deepspeed; print(deepspeed.__version__)')"
+echo "Transformers: $(python -c 'import transformers; print(transformers.__version__)')"
+echo "CUDA devices: $(python -c 'import torch; print(torch.cuda.device_count())')"
+
+# Verify AdaRePO modules are importable
+echo "--- AdaRePO module check ---"
+python -c "
+import sys
+sys.path.insert(0, '${ADA_DIR}')
+sys.path.insert(0, '${REPO_DIR}/src/x_r1')
+from ada_repo_config import AdaRePOConfig
+from dynamic_beta import DynamicBetaController
+from memory_bank import MoleculeMemoryBank
+print('AdaRePO modules imported OK')
+print(f'  DynamicBetaController modes: sigmoid_gap, sample_sigmoid, rank, softmax_gap, confidence, fixed')
+"
+
+nvidia-smi
+
+# ---- Verify data ----
+echo "Training data:"
+python -c "
+import pandas as pd
+df = pd.read_csv('data/OpenMolIns/light/train.csv')
+print(f'  Total rows: {len(df)}')
+print(f'  Subtasks: {df.SubTask.value_counts().to_dict()}')
+df_filtered = df[df.SubTask.isin(['LogP', 'MR', 'QED'])]
+print(f'  After filtering (LogP, MR, QED): {len(df_filtered)} rows')
+"
+
+echo "=============================================="
+echo "Starting AdaRePO training..."
+echo "Entry: ${ADA_DIR}/ada_repo.py"
+echo "Config: ${ADA_DIR}/configs/ada_repo_3B_config.yaml"
+echo "DeepSpeed: recipes/zero3_polaris.yaml"
+echo "beta_guide_mode: sigmoid_gap"
+echo "num_processes: 3 (training) + 1 (vLLM)"
+echo "=============================================="
+
+# ---- Launch training ----
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port ${MASTER_PORT} \
+    --num_processes 3 \
+    ${ADA_DIR}/ada_repo.py \
+    --config ${ADA_DIR}/configs/ada_repo_3B_config.yaml \
+    --variant default
+
+echo "=============================================="
+echo "AdaRePO training complete at $(date)"
+echo "=============================================="

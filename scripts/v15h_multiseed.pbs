@@ -1,0 +1,105 @@
+#!/bin/bash -l
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=06:00:00
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -l filesystems=eagle:home
+#PBS -j oe
+#PBS -N v15h_ms
+
+# Usage: qsub -v RUN_NAME=...,CONFIG=...,SEED=...,OUTPUT_DIR=... v16_multiseed.pbs
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}"
+exec > "${LOG_DIR}/v15hms_${RUN_NAME}_s${SEED}_${PBS_JOBID}.log" 2>&1
+
+echo "=============================================="
+echo "v15h multi-seed: ${RUN_NAME} seed=${SEED}"
+echo "Config: ${CONFIG}"
+echo "Output: ${OUTPUT_DIR}"
+echo "=============================================="
+
+cd ${REPO_DIR}
+
+# ── Environment (match v15_experiment.pbs) ────────────────────────────────────
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export LIBRARY_PATH=${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+export http_proxy=http://proxy.alcf.anl.gov:3128
+export https_proxy=http://proxy.alcf.anl.gov:3128
+export WANDB_MODE=online
+
+ENTRY=${ADA_DIR}/ada_repo.py
+
+# If CONFIG contains v15h_Polaris (RePO baseline), use repo.py
+if [[ "${CONFIG}" == *"v15h_Polaris"* ]]; then
+    ENTRY=${REPO_DIR}/src/x_r1/repo.py
+fi
+
+echo ">>> STEP 1: Training ${RUN_NAME} seed=${SEED} — $(date)"
+
+accelerate launch \
+    --config_file ${REPO_DIR}/recipes/zero3_polaris.yaml \
+    ${ENTRY} \
+    --config ${CONFIG} \
+    --seed ${SEED} \
+    --output_dir ${OUTPUT_DIR} \
+    --run_name "${RUN_NAME}_s${SEED}"
+
+echo ">>> STEP 1 complete — $(date)"
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+BEST_CKPT="${OUTPUT_DIR}/checkpoint-120"
+if [ ! -d "${BEST_CKPT}" ]; then
+    BEST_CKPT=$(ls -d ${OUTPUT_DIR}/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+fi
+
+if [ -z "${BEST_CKPT}" ] || [ ! -d "${BEST_CKPT}" ]; then
+    echo "ERROR: No checkpoint found in ${OUTPUT_DIR}"
+    exit 1
+fi
+
+CKPT_NAME=$(basename ${BEST_CKPT})
+EVAL_BASE=${ADA_DIR}/evaluation_results/v15hms/${RUN_NAME}_s${SEED}_${CKPT_NAME}
+
+# Evaluate on all 3 MolOpt subtasks
+for SUBTASK in LogP MR QED; do
+    EVAL_DIR="${EVAL_BASE}"
+
+    echo ""
+    echo ">>> STEP 2: Eval ${RUN_NAME} seed=${SEED} ${CKPT_NAME} ${SUBTASK} — $(date)"
+
+    CUDA_VISIBLE_DEVICES=0 python ${REPO_DIR}/generate_predictions.py \
+        --model_path "${BEST_CKPT}" \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask ${SUBTASK} \
+        --output_dir "${EVAL_DIR}" \
+        --lang en \
+        --gpu_memory_utilization 0.85
+
+    python ${REPO_DIR}/evaluate.py \
+        --model_path "${BEST_CKPT}" \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask ${SUBTASK} \
+        --output_dir "${EVAL_DIR}"
+
+    echo ">>> ${SUBTASK} eval complete — $(date)"
+done
+
+echo ""
+echo "=============================================="
+echo "v15h multi-seed ${RUN_NAME} s${SEED} ALL DONE — $(date)"
+echo "=============================================="

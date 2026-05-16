@@ -1,0 +1,110 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=01:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N resume_p1_qed
+#PBS -j oe
+#PBS -r y
+
+# Resume the 2 remaining QED 240-step runs that didn't finish.
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}"
+exec > ${LOG_DIR}/resume_p1_qed_${PBS_JOBID}.log 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+export WANDB_MODE=online
+export WANDB_DIR=${ADA_DIR}/logs
+export NCCL_DEBUG=WARN
+export NCCL_COLLNET_ENABLE=0
+export MASTER_ADDR=localhost
+export MASTER_PORT=29501
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OPENBLAS_NUM_THREADS=1
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Phase 1 Wave 2 — Resume QED runs"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+nvidia-smi
+
+# RePO QED — resume from latest checkpoint (225)
+echo "=== Resuming repo_QED_s240 from checkpoint-225 ==="
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port 29501 \
+    --num_processes 3 \
+    ${REPO_DIR}/src/x_r1/repo.py \
+    --config ${REPO_DIR}/recipes/Polaris_3B_QED.yaml \
+    --variant default \
+    --max_steps 240 \
+    --output_dir ${REPO_DIR}/output/p1_repo_3B_QED_s240 \
+    --save_strategy steps \
+    --save_steps 15 \
+    --save_total_limit 10 \
+    --run_name "p1_repo_QED_s240_resume" \
+    --resume_from_checkpoint "${REPO_DIR}/output/p1_repo_3B_QED_s240/checkpoint-225"
+
+echo "Done: repo_QED_s240 at $(date)"
+
+# AdaRePO QED — resume from latest checkpoint (210)
+echo "=== Resuming ada_repo_QED_s240 from checkpoint-210 ==="
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port 29502 \
+    --num_processes 3 \
+    ${ADA_DIR}/ada_repo.py \
+    --config ${ADA_DIR}/configs/ada_repo_3B_QED.yaml \
+    --variant default \
+    --max_steps 240 \
+    --output_dir ${ADA_DIR}/output/p1_ada_repo_3B_QED_s240 \
+    --save_strategy steps \
+    --save_steps 15 \
+    --save_total_limit 10 \
+    --run_name "p1_ada_repo_QED_s240_resume" \
+    --resume_from_checkpoint "${ADA_DIR}/output/p1_ada_repo_3B_QED_s240/checkpoint-210"
+
+echo "Done: ada_repo_QED_s240 at $(date)"
+
+echo "=============================================="
+echo "All QED resumes complete at $(date)"
+echo "=============================================="

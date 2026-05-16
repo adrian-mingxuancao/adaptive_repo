@@ -1,0 +1,111 @@
+# ==============================================
+# v15 ABLATION — Only value-gap beta, NO priority weighting
+# Purpose: isolate contribution of sigmoid_gap beta from priority weighting
+# ==============================================
+
+model_name_or_path: /lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/Qwen2.5-3B-Instruct
+model_revision: main
+torch_dtype: bfloat16
+attn_implementation: sdpa
+
+dataset_name: data/OpenMolIns
+num_processes: 3
+
+data_scale: light
+subtask_selection: ["LogP"]
+
+bf16: true
+use_vllm: true
+vllm_device: auto
+vllm_gpu_memory_utilization: 0.6
+do_eval: false
+eval_strategy: "no"
+gradient_accumulation_steps: 16
+gradient_checkpointing: true
+gradient_checkpointing_kwargs:
+  use_reentrant: false
+learning_rate: 5.0e-06
+log_level: info
+logging_steps: 1
+logging_strategy: steps
+lr_scheduler_type: cosine
+max_prompt_length: 256
+num_generations: 3
+max_completion_length: 1024
+max_steps: 120
+num_train_epochs: 4
+output_dir: /lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo/output/v15_betaonly_LogP
+overwrite_output_dir: true
+per_device_eval_batch_size: 2
+per_device_train_batch_size: 2
+push_to_hub: false
+report_to:
+  - wandb
+save_strategy: steps
+save_steps: 30
+save_total_limit: 5
+seed: 42
+warmup_ratio: 0.15
+
+wandb_project: "AdaRePO-v15-Polaris"
+wandb_entity: null
+
+# ACTIVE: sigmoid_gap beta ON
+beta_guide_mode: "sigmoid_gap"
+beta_guide_max: 1.0
+beta_guide_alpha: 5.0
+beta_guide_top_k_frac: 0.33
+beta_guide_softmax_tau: 1.0
+
+# Memory bank OFF
+use_memory_bank: false
+memory_bank_size: 5
+promotion_margin: 0.1
+promotion_sim_min: 0.3
+memory_bank_max_age: 1000
+
+# Ensemble OFF
+use_ensemble: false
+ensemble_size: 5
+confidence_threshold: 0.5
+ensemble_update_freq: 10
+ensemble_hidden_dim: 128
+ensemble_fp_bits: 1024
+
+# Priority weighting OFF (ablation)
+use_priority_weighting: false
+priority_variance_scale: 2.0
+priority_frontier_center: 0.3
+priority_frontier_width: 0.3
+priority_min_weight: 0.2
+
+# Reward (matched to RePO baseline)
+reward_funcs:
+  - smile_optimization
+reward_weights:
+  smile_optimization: 1.0
+
+property_name: "logP"
+target_direction: "increase"
+similarity_weight: 0.3
+property_weight: 0.7
+min_similarity: 0.1
+
+cosine_min_value_wrong: 0.0
+cosine_max_value_wrong: 0.0
+cosine_min_value_correct: 0.5
+cosine_max_value_correct: 1.0
+cosine_max_len: 2048
+repetition_n_grams: 4
+repetition_max_penalty: -0.6
+validity_weight: 1.0
+atom_weight: 1.0
+bond_weight: 1.2
+functional_group_weight: 1.8
+similarity_threshold: 0.1
+n_bits: 1024
+reward_mode: "average"
+length_min_tokens: 100
+length_target_tokens: 500
+length_max_reward: 0.8
+length_reward_curve: "linear"

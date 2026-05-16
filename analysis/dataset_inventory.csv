@@ -1,0 +1,19 @@
+task_family,subtask,source,file_path,split,rows,columns,has_ground_truth,property_column,reward_supported,comparable_to_logp,notes
+MolOpt,LogP,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,yes,yes,filtered by SubTask==LogP
+MolOpt,MR,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,yes,yes,filtered by SubTask==MR
+MolOpt,QED,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,yes,yes,filtered by SubTask==QED
+MolOpt,LogP,TOMG-Bench,RePO/data/benchmarks/open_generation/MolOpt/LogP/test.csv,test,5000,"index,Instruction,molecule,logP",yes,logP,yes,yes,TOMG-Bench official test set
+MolOpt,MR,TOMG-Bench,RePO/data/benchmarks/open_generation/MolOpt/MR/test.csv,test,5000,"index,Instruction,molecule,MR",yes,MR,yes,yes,TOMG-Bench official test set
+MolOpt,QED,TOMG-Bench,RePO/data/benchmarks/open_generation/MolOpt/QED/test.csv,test,5000,"index,Instruction,molecule,QED",yes,QED,yes,yes,TOMG-Bench official test set
+MolCustom,AtomNum,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolCustom,BondNum,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolCustom,FunctionalGroup,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolEdit,AddComponent,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolEdit,SubComponent,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolEdit,DelComponent,OpenMolIns-light,RePO/data/OpenMolIns/light/train.csv,train,500,"SubTask,Instruction,molecule",yes,,no,no,different task family
+MolEdit,AddComponent,TOMG-Bench,RePO/data/benchmarks/open_generation/MolEdit/AddComponent/test.csv,test,varies,"Instruction,molecule",yes,,no,no,structural edit task
+MolEdit,SubComponent,TOMG-Bench,RePO/data/benchmarks/open_generation/MolEdit/SubComponent/test.csv,test,varies,"Instruction,molecule",yes,,no,no,structural edit task
+MolEdit,DelComponent,TOMG-Bench,RePO/data/benchmarks/open_generation/MolEdit/DelComponent/test.csv,test,varies,"Instruction,molecule",yes,,no,no,structural edit task
+MolCustom,AtomNum,TOMG-Bench,RePO/data/benchmarks/open_generation/MolCustom/AtomNum/test.csv,test,varies,Instruction,no,,no,no,generation task
+MolCustom,BondNum,TOMG-Bench,RePO/data/benchmarks/open_generation/MolCustom/BondNum/test.csv,test,varies,Instruction,no,,no,no,generation task
+MolCustom,FunctionalGroup,TOMG-Bench,RePO/data/benchmarks/open_generation/MolCustom/FunctionalGroup/test.csv,test,varies,Instruction,no,,no,no,generation task

@@ -1,0 +1,124 @@
+# ==============================================
+# v16-struct — AdaRePO Adaptive Curriculum for Structure Tasks
+#
+# Same method as v16 (adaptive temp + memory bank + per-sample beta)
+# but applied to structural optimization (AddComponent/Del/Sub)
+#
+# Includes v17 bug fixes (per-sample beta_guide weighting).
+# ==============================================
+
+model_name_or_path: /net/scratch/caom/repo_project/cache/huggingface/models--Qwen--Qwen2.5-3B-Instruct/snapshots/aa8e72537993ba99e69dfaafa59ed015b17504d1
+model_revision: main
+torch_dtype: bfloat16
+attn_implementation: flash_attention_2
+
+dataset_name: data/OpenMolIns
+num_processes: 2
+
+data_scale: light
+subtask_selection: ["AddComponent", "SubComponent", "DelComponent"]
+
+bf16: true
+use_vllm: true
+vllm_device: auto
+vllm_gpu_memory_utilization: 0.8
+do_eval: false
+eval_strategy: "no"
+gradient_accumulation_steps: 8
+gradient_checkpointing: true
+gradient_checkpointing_kwargs:
+  use_reentrant: false
+learning_rate: 5.0e-06
+log_level: info
+logging_steps: 1
+logging_strategy: steps
+lr_scheduler_type: cosine
+max_prompt_length: 256
+num_generations: 4
+max_completion_length: 1024
+max_steps: -1
+num_train_epochs: 4
+output_dir: /net/scratch/caom/repo_project/outputs/ada_repo_dsi_v16_struct
+overwrite_output_dir: true
+per_device_eval_batch_size: 4
+per_device_train_batch_size: 2
+push_to_hub: false
+report_to:
+  - wandb
+save_strategy: steps
+save_steps: 50
+save_total_limit: 3
+seed: 42
+warmup_ratio: 0.15
+
+wandb_project: "AdaRePO-DSI"
+wandb_entity: null
+
+# Dynamic beta (same as v16)
+beta_guide_mode: "sigmoid_gap"
+beta_guide_max: 1.5
+beta_guide_min: 0.3
+beta_guide_alpha: 3.0
+beta_guide_top_k_frac: 0.33
+beta_guide_softmax_tau: 1.0
+
+# Adaptive Temperature (Anti-Collapse)
+use_adaptive_temperature: true
+adaptive_temp_base: 0.9
+adaptive_temp_high: 1.3
+adaptive_temp_sigma_threshold: 0.05
+adaptive_temp_ema_alpha: 0.3
+
+# Memory Bank Self-Distillation
+use_memory_bank: true
+memory_bank_size: 5
+promotion_margin: 0.05
+promotion_sim_min: 0.2
+memory_bank_max_age: 500
+
+# Ensemble OFF
+use_ensemble: false
+ensemble_size: 5
+confidence_threshold: 0.5
+ensemble_update_freq: 10
+ensemble_hidden_dim: 128
+ensemble_fp_bits: 1024
+
+# Priority weighting OFF
+use_priority_weighting: false
+priority_variance_scale: 2.0
+priority_frontier_center: 0.3
+priority_frontier_width: 0.3
+priority_min_weight: 0.2
+
+# Reward — structure_optimization
+reward_funcs:
+  - structure_optimization
+reward_weights:
+  structure_optimization: 1.0
+
+# These are unused for structure tasks but required by parser
+property_name: "qed"
+target_direction: "increase"
+similarity_weight: 0.5
+property_weight: 0.5
+min_similarity: 0.2
+
+cosine_min_value_wrong: 0.0
+cosine_max_value_wrong: 0.0
+cosine_min_value_correct: 0.5
+cosine_max_value_correct: 1.0
+cosine_max_len: 2048
+repetition_n_grams: 4
+repetition_max_penalty: -0.6
+validity_weight: 1.0
+atom_weight: 1.0
+bond_weight: 1.2
+functional_group_weight: 1.8
+similarity_threshold: 0.1
+n_bits: 1024
+reward_mode: "average"
+length_min_tokens: 100
+length_target_tokens: 500
+length_max_reward: 0.8
+length_reward_curve: "linear"

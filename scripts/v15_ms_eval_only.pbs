@@ -1,0 +1,76 @@
+#!/bin/bash -l
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=01:00:00
+#PBS -q debug-scaling
+#PBS -A IMPROVE_Aim1
+#PBS -l filesystems=eagle:home
+#PBS -j oe
+#PBS -N v15_eval
+
+# Eval-only for completed training checkpoints
+# Runs generate_predictions + evaluate for each checkpoint
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}"
+exec > "${LOG_DIR}/v15ms_eval_only_${PBS_JOBID}.log" 2>&1
+
+cd ${REPO_DIR}
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export LIBRARY_PATH=${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+export http_proxy=http://proxy.alcf.anl.gov:3128
+export https_proxy=http://proxy.alcf.anl.gov:3128
+
+EVAL_BASE=${ADA_DIR}/evaluation_results/v15ms
+
+# List of completed checkpoints to evaluate
+declare -a RUNS=(
+    "repo_s456|/lus/eagle/projects/IMPROVE_Aim1/caom/RePO/output/v15ms_repo_s456/checkpoint-120"
+    "static_s123|${ADA_DIR}/output/v15ms_static_s123/checkpoint-120"
+)
+
+for entry in "${RUNS[@]}"; do
+    IFS='|' read -r RUN_NAME CKPT_PATH <<< "$entry"
+    EVAL_DIR="${EVAL_BASE}/${RUN_NAME}_checkpoint-120"
+    
+    echo "=============================================="
+    echo "Evaluating ${RUN_NAME} — $(date)"
+    echo "  Checkpoint: ${CKPT_PATH}"
+    echo "  Output: ${EVAL_DIR}"
+    echo "=============================================="
+    
+    CUDA_VISIBLE_DEVICES=0 python generate_predictions.py \
+        --model_path "${CKPT_PATH}" \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask LogP \
+        --output_dir "${EVAL_DIR}" \
+        --lang en \
+        --gpu_memory_utilization 0.85
+    
+    python evaluate.py \
+        --model_path "${CKPT_PATH}" \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask LogP \
+        --output_dir "${EVAL_DIR}"
+    
+    echo ">>> ${RUN_NAME} eval complete — $(date)"
+    echo ""
+done
+
+echo "=============================================="
+echo "ALL EVALS DONE — $(date)"
+echo "=============================================="

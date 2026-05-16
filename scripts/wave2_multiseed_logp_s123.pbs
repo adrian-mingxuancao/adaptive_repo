@@ -1,0 +1,109 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N ms_logp_s123
+#PBS -j oe
+#PBS -r y
+
+# ==============================================
+# Multi-seed robustness test: LogP seed=123
+# Runs RePO then AdaRePO sequentially (120 steps each)
+# Expected: ~2.5h per run = ~5h total
+# ==============================================
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}"
+exec > "${LOG_DIR}/ms_logp_s123_${PBS_JOBID}.log" 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+export WANDB_MODE=online
+export WANDB_DIR=${ADA_DIR}/logs
+export NCCL_DEBUG=WARN
+export NCCL_COLLNET_ENABLE=0
+export MASTER_ADDR=localhost
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OPENBLAS_NUM_THREADS=1
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Multi-seed LogP (seed=123) — $(date)"
+echo "Node: $(hostname)"
+echo "=============================================="
+
+nvidia-smi
+
+# --- Run 1: RePO LogP seed=123 ---
+echo ""
+echo ">>> RUN 1/2: RePO LogP seed=123 — $(date)"
+export MASTER_PORT=29501
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port ${MASTER_PORT} \
+    --num_processes 3 \
+    ${REPO_DIR}/src/x_r1/repo.py \
+    --config ${REPO_DIR}/recipes/Polaris_3B_LogP.yaml \
+    --variant default \
+    --seed 123 \
+    --output_dir ${REPO_DIR}/output/ms_repo_3B_LogP_s123 \
+    --run_name ms_repo_LogP_s123 \
+    --max_steps 120 \
+    --save_steps 15
+
+echo ">>> RUN 1/2 complete — $(date)"
+
+# --- Run 2: AdaRePO LogP seed=123 ---
+echo ""
+echo ">>> RUN 2/2: AdaRePO LogP seed=123 — $(date)"
+export MASTER_PORT=29502
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port ${MASTER_PORT} \
+    --num_processes 3 \
+    ${ADA_DIR}/ada_repo.py \
+    --config ${ADA_DIR}/configs/ada_repo_3B_LogP.yaml \
+    --variant default \
+    --seed 123 \
+    --output_dir ${ADA_DIR}/output/ms_ada_repo_3B_LogP_s123 \
+    --run_name ms_ada_LogP_s123 \
+    --max_steps 120 \
+    --save_steps 15
+
+echo ">>> RUN 2/2 complete — $(date)"
+echo "=============================================="
+echo "Multi-seed LogP (seed=123) ALL DONE — $(date)"
+echo "=============================================="

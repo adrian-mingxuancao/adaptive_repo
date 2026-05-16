@@ -1,0 +1,119 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=02:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N eval_p1_w1
+#PBS -j oe
+#PBS -r y
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+EVAL_BASE=${ADA_DIR}/evaluation_results/phase1
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}" "${EVAL_BASE}"
+exec > ${LOG_DIR}/eval_p1_w1_${PBS_JOBID}.log 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Phase 1 Wave 1 Evaluation"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+nvidia-smi
+
+evaluate_checkpoint() {
+    local MODEL_PATH=$1
+    local SUBTASK=$2
+    local RUN_KEY=$3
+    local CKPT=$4
+    local MAX_SAMPLES=$5
+
+    local CKPT_PATH="${MODEL_PATH}/checkpoint-${CKPT}"
+    if [[ ! -d "$CKPT_PATH" ]]; then
+        echo "SKIP: ${CKPT_PATH} does not exist"
+        return 0
+    fi
+
+    local OUT_DIR="${EVAL_BASE}/${RUN_KEY}/checkpoint-${CKPT}"
+    if [[ -f "${OUT_DIR}/open_generation/MolOpt/${SUBTASK}_summary.csv" ]]; then
+        echo "SKIP: ${RUN_KEY}/checkpoint-${CKPT} already evaluated"
+        return 0
+    fi
+
+    echo "----------------------------------------------"
+    echo "Evaluating: ${RUN_KEY} @ checkpoint-${CKPT}"
+    echo "  Model: ${CKPT_PATH}"
+    echo "  Output: ${OUT_DIR}"
+    echo "----------------------------------------------"
+
+    mkdir -p "${OUT_DIR}"
+
+    python ${REPO_DIR}/generate_predictions.py \
+        --model_path "${CKPT_PATH}" \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask "${SUBTASK}" \
+        --output_dir "${OUT_DIR}" \
+        --device cuda \
+        --gpu_memory_utilization 0.85 \
+        --lang en \
+        --max_samples 1000
+
+    python ${REPO_DIR}/evaluate.py \
+        --benchmark open_generation \
+        --task MolOpt \
+        --subtask "${SUBTASK}" \
+        --output_dir "${OUT_DIR}" \
+        --max_samples 1000
+
+    echo "Done: ${RUN_KEY} @ checkpoint-${CKPT}"
+}
+
+# Evaluate 120-step checkpoints (at step 60 and 120)
+# RePO MR
+evaluate_checkpoint "${REPO_DIR}/output/p1_repo_3B_MR_s120" "MR" "repo_MR_s120" 60 1000
+evaluate_checkpoint "${REPO_DIR}/output/p1_repo_3B_MR_s120" "MR" "repo_MR_s120" 120 1000
+
+# AdaRePO MR
+evaluate_checkpoint "${ADA_DIR}/output/p1_ada_repo_3B_MR_s120" "MR" "ada_MR_s120" 60 1000
+evaluate_checkpoint "${ADA_DIR}/output/p1_ada_repo_3B_MR_s120" "MR" "ada_MR_s120" 120 1000
+
+# RePO QED
+evaluate_checkpoint "${REPO_DIR}/output/p1_repo_3B_QED_s120" "QED" "repo_QED_s120" 60 1000
+evaluate_checkpoint "${REPO_DIR}/output/p1_repo_3B_QED_s120" "QED" "repo_QED_s120" 120 1000
+
+# AdaRePO QED
+evaluate_checkpoint "${ADA_DIR}/output/p1_ada_repo_3B_QED_s120" "QED" "ada_QED_s120" 60 1000
+evaluate_checkpoint "${ADA_DIR}/output/p1_ada_repo_3B_QED_s120" "QED" "ada_QED_s120" 120 1000
+
+echo "=============================================="
+echo "Phase 1 Wave 1 Evaluation complete at $(date)"
+echo "=============================================="

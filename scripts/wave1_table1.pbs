@@ -1,0 +1,20 @@
+#!/bin/bash
+# ==============================================
+# Wave 1 — Complete Table 1 coverage
+# Split into 3 parts submitted as separate PBS jobs:
+#   Part A: wave1_train_struct.pbs — RePO + AdaRePO structural (4 epochs, ~64 steps each, ~4h)
+#   Part B: wave1_train_logp.pbs  — RePO + AdaRePO LogP 120 steps (~6h)
+#   Part C: wave1_eval.pbs        — Evaluate all Wave 1 models + existing LogP ckpt-60 (~2h)
+#
+# Usage:
+#   qsub scripts/wave1_train_struct.pbs
+#   qsub scripts/wave1_train_logp.pbs
+#   # After both training jobs finish:
+#   qsub scripts/wave1_eval.pbs
+#
+# This file is an index only. See the three individual PBS scripts.
+# ==============================================
+echo "This is an index file. Submit the individual PBS scripts instead."
+echo "  qsub scripts/wave1_train_struct.pbs"
+echo "  qsub scripts/wave1_train_logp.pbs"
+echo "  qsub scripts/wave1_eval.pbs"

@@ -1,0 +1,135 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=03:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N w1_eval_p
+#PBS -j oe
+#PBS -r y
+
+# ==============================================
+# Wave 1 Partial Eval — evaluate existing artifacts
+#
+# Models to evaluate:
+#   1. RePO Structure ckpt-184 on AddComponent/DelComponent/SubComponent
+#   2. RePO LogP ckpt-60 on LogP
+#   3. RePO LogP ckpt-120 on LogP
+#   4. AdaRePO LogP ckpt-60 on LogP
+#   5. AdaRePO LogP ckpt-75 on LogP
+#
+# Estimated: ~10 eval runs × ~10-15min each = ~2.5h
+# ==============================================
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+EVAL_DIR=${ADA_DIR}/evaluation_results/wave1/
+
+mkdir -p "${LOG_DIR}" "${EVAL_DIR}"
+exec > "${LOG_DIR}/w1_eval_partial_${PBS_JOBID}.log" 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+export OPENBLAS_NUM_THREADS=1
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Wave 1 Partial Eval"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+nvidia-smi
+
+run_eval() {
+    local NAME=$1
+    local MODEL_PATH=$2
+    local TASK=$3
+    local SUBTASK=$4
+    local OUTPUT_DIR=$5
+
+    echo ""
+    echo "----------------------------------------------"
+    echo "EVAL: ${NAME} — ${TASK}/${SUBTASK}"
+    echo "  Model: ${MODEL_PATH}"
+    echo "  Output: ${OUTPUT_DIR}"
+    echo "  Start: $(date)"
+    echo "----------------------------------------------"
+
+    if [ ! -d "${MODEL_PATH}" ]; then
+        echo "SKIP: model path does not exist: ${MODEL_PATH}"
+        return
+    fi
+
+    CUDA_VISIBLE_DEVICES=0 python generate_predictions.py \
+        --model_path "${MODEL_PATH}" \
+        --benchmark open_generation \
+        --task "${TASK}" \
+        --subtask "${SUBTASK}" \
+        --output_dir "${OUTPUT_DIR}" \
+        --lang en \
+        --gpu_memory_utilization 0.85
+
+    python evaluate.py \
+        --model_path "${MODEL_PATH}" \
+        --benchmark open_generation \
+        --task "${TASK}" \
+        --subtask "${SUBTASK}" \
+        --output_dir "${OUTPUT_DIR}"
+
+    echo "EVAL DONE: ${NAME} — ${TASK}/${SUBTASK} at $(date)"
+}
+
+# ==================================================================
+# 1. RePO Structure — final checkpoint on MolEdit tasks
+# ==================================================================
+REPO_STRUCT="${REPO_DIR}/output/repo_3B_Structure/checkpoint-184"
+
+for SUBTASK in AddComponent DelComponent SubComponent; do
+    run_eval "repo_struct_ckpt184" "${REPO_STRUCT}" "MolEdit" "${SUBTASK}" "${EVAL_DIR}"
+done
+
+# ==================================================================
+# 2. RePO LogP — checkpoint-60 and checkpoint-120
+# ==================================================================
+REPO_LOGP="${REPO_DIR}/output/w1_repo_3B_LogP_s120"
+
+run_eval "repo_LogP_ckpt60"  "${REPO_LOGP}/checkpoint-60"  "MolOpt" "LogP" "${EVAL_DIR}"
+run_eval "repo_LogP_ckpt120" "${REPO_LOGP}/checkpoint-120" "MolOpt" "LogP" "${EVAL_DIR}"
+
+# ==================================================================
+# 3. AdaRePO LogP — checkpoint-60 and checkpoint-75
+# ==================================================================
+ADA_LOGP="${ADA_DIR}/output/w1_ada_repo_3B_LogP_s120"
+
+run_eval "ada_LogP_ckpt60"  "${ADA_LOGP}/checkpoint-60"  "MolOpt" "LogP" "${EVAL_DIR}"
+run_eval "ada_LogP_ckpt75"  "${ADA_LOGP}/checkpoint-75"  "MolOpt" "LogP" "${EVAL_DIR}"
+
+echo ""
+echo "=============================================="
+echo "Wave 1 Partial Eval complete at $(date)"
+echo "=============================================="
+echo "Results in: ${EVAL_DIR}"

@@ -1,0 +1,92 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=03:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N w1_ada_logp
+#PBS -j oe
+#PBS -r y
+
+# ==============================================
+# Wave 1 — AdaRePO LogP resume from checkpoint-75
+# Remaining: 45 steps (75→120) at ~102s/step ≈ ~1.3h
+# Walltime: 3h (conservative)
+# ==============================================
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+
+mkdir -p "${LOG_DIR}"
+exec > "${LOG_DIR}/w1_ada_logp_resume_${PBS_JOBID}.log" 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+export WANDB_MODE=online
+export WANDB_DIR=${ADA_DIR}/logs
+export NCCL_DEBUG=WARN
+export NCCL_COLLNET_ENABLE=0
+export MASTER_ADDR=localhost
+export MASTER_PORT=29501
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OPENBLAS_NUM_THREADS=1
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Wave 1 — AdaRePO LogP resume from checkpoint-75"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+python -c "import flash_attn; print('flash-attn:', flash_attn.__version__)" 2>/dev/null || {
+    pip install flash-attn --no-build-isolation 2>&1 | tail -5 || true
+}
+
+nvidia-smi
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port ${MASTER_PORT} \
+    --num_processes 3 \
+    ${ADA_DIR}/ada_repo.py \
+    --config ${ADA_DIR}/configs/ada_repo_3B_LogP.yaml \
+    --variant default \
+    --max_steps 120 \
+    --output_dir ${ADA_DIR}/output/w1_ada_repo_3B_LogP_s120 \
+    --resume_from_checkpoint ${ADA_DIR}/output/w1_ada_repo_3B_LogP_s120/checkpoint-75 \
+    --save_strategy steps \
+    --save_steps 15 \
+    --save_total_limit 10 \
+    --run_name "w1_ada_LogP_s120_resume"
+
+echo ""
+echo "=============================================="
+echo "AdaRePO LogP resume complete at $(date)"
+echo "=============================================="

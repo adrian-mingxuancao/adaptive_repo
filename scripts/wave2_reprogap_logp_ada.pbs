@@ -1,0 +1,108 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N reprogap_ada
+#PBS -j oe
+#PBS -r y
+
+# ==============================================
+# Reproduction-gap test: AdaRePO LogP with max_completion_length=1024
+# Companion to RePO reprogap test (job 6978443)
+# Isolating max_completion_length as single variable
+# Expected: ~3h training + ~0.25h eval
+# ==============================================
+
+set -euo pipefail
+
+REPO_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ADA_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/agent_drug_discovery/adaptive_repo
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+LOG_DIR=${ADA_DIR}/logs
+EVAL_BASE=${ADA_DIR}/evaluation_results/wave2
+
+mkdir -p "${LOG_DIR}" "${EVAL_BASE}"
+exec > "${LOG_DIR}/reprogap_logp_ada_${PBS_JOBID}.log" 2>&1
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${REPO_DIR}/src/x_r1:${ADA_DIR}:${PYTHONPATH:-}"
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+export WANDB_MODE=online
+export WANDB_DIR=${ADA_DIR}/logs
+export NCCL_DEBUG=WARN
+export NCCL_COLLNET_ENABLE=0
+export MASTER_ADDR=localhost
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OPENBLAS_NUM_THREADS=1
+
+cd ${REPO_DIR}
+
+echo "=============================================="
+echo "Reproduction-gap test: AdaRePO LogP maxlen=1024 — $(date)"
+echo "Node: $(hostname)"
+echo "=============================================="
+nvidia-smi
+
+# --- Step 1: Train AdaRePO LogP with maxlen=1024 ---
+echo ""
+echo ">>> STEP 1: AdaRePO LogP maxlen=1024 (120 steps) — $(date)"
+export MASTER_PORT=29501
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NO_PROXY=localhost,127.0.0.1 \
+no_proxy=localhost,127.0.0.1 \
+ACCELERATE_LOG_LEVEL=info \
+  accelerate launch \
+    --config_file recipes/zero3_polaris.yaml \
+    --main_process_port ${MASTER_PORT} \
+    --num_processes 3 \
+    ${ADA_DIR}/ada_repo.py \
+    --config ${ADA_DIR}/configs/ada_repo_3B_LogP.yaml \
+    --variant default \
+    --max_completion_length 1024 \
+    --output_dir ${ADA_DIR}/output/reprogap_ada_repo_3B_LogP \
+    --run_name reprogap_ada_LogP \
+    --max_steps 120 \
+    --save_steps 15
+
+echo ">>> STEP 1 complete — $(date)"
+
+# --- Step 2: Eval on full test ---
+echo ""
+echo ">>> STEP 2: Eval reprogap AdaRePO LogP ckpt-120 — $(date)"
+
+CUDA_VISIBLE_DEVICES=0 python generate_predictions.py \
+    --model_path "${ADA_DIR}/output/reprogap_ada_repo_3B_LogP/checkpoint-120" \
+    --benchmark open_generation \
+    --task MolOpt \
+    --subtask LogP \
+    --output_dir "${EVAL_BASE}/reprogap_ada_logp" \
+    --lang en \
+    --gpu_memory_utilization 0.85
+
+python evaluate.py \
+    --model_path "${ADA_DIR}/output/reprogap_ada_repo_3B_LogP/checkpoint-120" \
+    --benchmark open_generation \
+    --task MolOpt \
+    --subtask LogP \
+    --output_dir "${EVAL_BASE}/reprogap_ada_logp"
+
+echo ">>> STEP 2 complete — $(date)"
+echo "=============================================="
+echo "Reprogap AdaRePO LogP ALL DONE — $(date)"
+echo "=============================================="
