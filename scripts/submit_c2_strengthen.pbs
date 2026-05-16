@@ -1,0 +1,70 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=04:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N c2_strengthen
+#PBS -j oe
+#PBS -o /lus/eagle/projects/IMPROVE_Aim1/caom/
+
+# ==============================================
+# C2: Generate offline-strengthened references
+# Uses 4 GPUs for vLLM inference (M=16 candidates per example)
+# ==============================================
+
+set -euo pipefail
+
+LOG_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO/logs
+mkdir -p ${LOG_DIR}
+exec > ${LOG_DIR}/c2_strengthen_${PBS_JOBID}.log 2>&1
+
+PROJECT_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${PROJECT_DIR}/src/x_r1:${PYTHONPATH:-}"
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+cd ${PROJECT_DIR}
+
+echo "=============================================="
+echo "C2: Offline-strengthened reference generation"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+nvidia-smi
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 python scripts/strengthen_references.py \
+    --model_path /lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/Qwen2.5-3B-Instruct \
+    --train_csv data/OpenMolIns/light/train.csv \
+    --output_csv data/OpenMolIns/light/train_strengthened.csv \
+    --num_candidates 16 \
+    --temperature 1.0 \
+    --similarity_weight 0.5 \
+    --property_weight 0.5 \
+    --min_similarity 0.2 \
+    --gpu_memory_utilization 0.90
+
+echo "=============================================="
+echo "C2 complete at $(date)"
+echo "=============================================="

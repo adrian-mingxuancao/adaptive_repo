@@ -1,0 +1,86 @@
+#!/bin/bash
+#PBS -l select=1:system=polaris:ncpus=64:ngpus=4
+#PBS -l walltime=12:00:00
+#PBS -l filesystems=home:eagle
+#PBS -q preemptable
+#PBS -A IMPROVE_Aim1
+#PBS -N c1_isft
+#PBS -j oe
+#PBS -o /lus/eagle/projects/IMPROVE_Aim1/caom/
+
+# ==============================================
+# C1: Iterative SFT baseline
+# 4 iterations × (30-step RL + best-of-8 sampling)
+# Needs 4 GPUs: 3 for training + 1 for vLLM
+# ==============================================
+
+set -euo pipefail
+
+LOG_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO/logs
+mkdir -p ${LOG_DIR}
+exec > ${LOG_DIR}/c1_isft_${PBS_JOBID}.log 2>&1
+
+PROJECT_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/RePO
+ENV_DIR=/lus/eagle/projects/IMPROVE_Aim1/caom/repo_env
+
+export PATH="${ENV_DIR}/bin:${PATH}"
+export PYTHONPATH="${PROJECT_DIR}/src/x_r1:${PYTHONPATH:-}"
+export PROJECT_DIR
+
+export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/cuda
+CUDA_MATH_LIBS=/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/math_libs/12.9/targets/x86_64-linux/lib
+export LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_MATH_LIBS}:${LD_LIBRARY_PATH:-}
+export DS_SKIP_CUDA_CHECK=1
+
+export HF_HOME=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export TRANSFORMERS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface
+export HF_DATASETS_CACHE=/lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/datasets
+
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# SEED passed via -v
+SEED=${SEED:-42}
+OUTPUT_DIR=${OUTPUT_DIR:-${PROJECT_DIR}/output/isft_s${SEED}}
+
+cd ${PROJECT_DIR}
+
+echo "=============================================="
+echo "C1: Iterative SFT | seed=${SEED}"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "=============================================="
+
+nvidia-smi
+
+# Iterative SFT: 4 iterations × 30 RL steps + best-of-8 sampling
+# Total RL compute: 4 × 30 = 120 steps (matched to RePO baseline)
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export WANDB_PROJECT="APIAR-baselines"
+export WANDB_RUN_GROUP="isft"
+
+python scripts/iterative_sft.py \
+    --base_model /lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/Qwen2.5-3B-Instruct \
+    --repo_config recipes/isft_repo_phase.yaml \
+    --train_csv data/OpenMolIns/light/train.csv \
+    --output_dir "${OUTPUT_DIR}" \
+    --seed ${SEED} \
+    --n_iterations 4 \
+    --steps_per_iteration 30 \
+    --n_candidates 8 \
+    --temperature 0.7 \
+    --similarity_weight 0.5 \
+    --property_weight 0.5 \
+    --wandb_project APIAR-baselines \
+    --num_processes 3
+
+echo "=============================================="
+echo "C1 complete at $(date)"
+echo "=============================================="

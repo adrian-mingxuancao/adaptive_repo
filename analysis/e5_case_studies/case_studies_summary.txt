@@ -1,0 +1,96 @@
+
+============================================================
+LogP
+============================================================
+
+Case: apiar_wins (index=1313)
+  Source:     C[C@H](NC(=O)NCC1(O)CCCCCC1)C(=O)N1CCCC[C@@H]1C
+  APIAR gen:  C[C@H](NC(=O)NCC1(O)CCCCCC1)C(=O)N1CCCCC[C@@H]1C
+  RePO gen:   C[C@H](NC(=O)NCC1(O)CCCCCC1)C(=O)N1CCCC[C@@H](C#N)C1
+  Instruction: Modify the molecule C[C@H](NC(=O)NCC1(O)CCCCCC1)C(=O)N1CCCC[C@@H]1C to have a higher LogP value.
+  APIAR: valid=True, success=1, sim=1.0
+  RePO:  valid=True, success=0, sim=0.6140350877192983
+  APIAR original_logP=2.160399999999999
+  RePO  original_logP=2.160399999999999
+  APIAR generated_logP=2.5504999999999995
+  RePO  generated_logP=1.9116799999999987
+  APIAR logP_change=0.39010000000000034
+  RePO  logP_change=-0.2487200000000005
+
+Case: apiar_wins (index=3121)
+  Source:     FC(F)(F)c1cccc(Nc2scc(-c3ccc(Cl)cc3)[n+]2CCc2ccccc2)c1
+  APIAR gen:  FC(Cl)(Cl)c1cccc(Nc2scc(-c3ccc(Cl)cc3)[n+]2CCc2ccccc2)c1
+  RePO gen:   FC(F)(F)c1cccc(Nc2scc(-c3ccc(C(=O)[OH])cc3)[n+]2CCc2ccccc2)c1
+  Instruction: Optimize the molecule FC(F)(F)c1cccc(Nc2scc(-c3ccc(Cl)cc3)[n+]2CCc2ccccc2)c1 to have a higher LogP value.
+  APIAR: valid=True, success=1, sim=0.8727272727272727
+  RePO:  valid=True, success=0, sim=0.7796610169491526
+  APIAR original_logP=7.361100000000005
+  RePO  original_logP=7.361100000000005
+  APIAR generated_logP=7.8997000000000055
+  RePO  generated_logP=6.405900000000005
+  APIAR logP_change=0.5386000000000006
+  RePO  logP_change=-0.9551999999999996
+
+============================================================
+MR
+============================================================
+
+Case: apiar_wins (index=3675)
+  Source:     CCN(CC)S(=O)(=O)N[C@@H](c1ccccc1)c1ccccn1
+  APIAR gen:  CCN(CC)S(=O)(=O)N[C@@H](c1ccccn1)c1ccccc1
+  RePO gen:   CCN(CC)S(=O)(=O)N[C@@H](c1ccccc1)c1ccccn1-c1ccccc1
+  Instruction: Please modify the molecule CCN(CC)S(=O)(=O)N[C@@H](c1ccccc1)c1ccccn1 to decrease its MR value.
+  APIAR: valid=True, success=1, sim=1.0
+  RePO:  valid=False, success=0, sim=0.0
+  APIAR original_MR=87.49850000000006
+  RePO  original_MR=0.0
+  APIAR generated_MR=87.49850000000005
+  RePO  generated_MR=0.0
+  APIAR MR_change=-1.4210854715202004e-14
+  RePO  MR_change=0.0
+
+Case: apiar_wins (index=3490)
+  Source:     CCN(CC)S(=O)(=O)c1ccc(OC)c(C(=O)N2CCC3(CCCCC3)CC2)c1
+  APIAR gen:  CCN(CC)S(=O)(=O)c1ccc(OC)c(C(=O)N2CCC3(CCC3)CC2)c1
+  RePO gen:   CCN(CC)S(=O)(=O)c1ccc(OC)c(C(=O)N2CCC3(CCCCC3)CC2)c1
+  Instruction: Modify the molecule CCN(CC)S(=O)(=O)c1ccc(OC)c(C(=O)N2CCC3(CCCCC3)CC2)c1 to decrease its MR value.
+  APIAR: valid=True, success=1, sim=0.94
+  RePO:  valid=True, success=0, sim=1.0
+  APIAR original_MR=113.75630000000007
+  RePO  original_MR=113.75630000000007
+  APIAR generated_MR=104.52230000000006
+  RePO  generated_MR=113.75630000000007
+  APIAR MR_change=-9.234000000000009
+  RePO  MR_change=0.0
+
+============================================================
+QED
+============================================================
+
+Case: apiar_wins (index=1104)
+  Source:     CCCCOC(=O)Nc1cc(C)ccc1OC
+  APIAR gen:  CCCCCOC(=O)Nc1cc(C)ccc1OC
+  RePO gen:   CCCCOC(=O)Nc1cc(C)ccc1OC
+  Instruction: Optimize the molecule CCCCOC(=O)Nc1cc(C)ccc1OC to have a lower QED value.
+  APIAR: valid=True, success=1, sim=0.9210526315789473
+  RePO:  valid=True, success=0, sim=1.0
+  APIAR original_qed=0.7987208907228307
+  RePO  original_qed=0.7987208907228307
+  APIAR generated_qed=0.7833038740727393
+  RePO  generated_qed=0.7987208907228307
+  APIAR qed_change=-0.01541701665009143
+  RePO  qed_change=0.0
+
+Case: apiar_wins (index=1534)
+  Source:     CCc1nc2ccc(C(=O)N(C)[C@@H](C)c3nc4ccccc4s3)cc2nc1CC
+  APIAR gen:  CCc1nc2ccc(C(=O)N(C)[C@@H](C)c3nc4ccccc4s3)cc2nc1CCS
+  RePO gen:   CCc1nc2ccc(C(=O)N(C)[C@@H](C)c3nc4ccccc4s3)cc2nc1CC
+  Instruction: Optimize the molecule CCc1nc2ccc(C(=O)N(C)[C@@H](C)c3nc4ccccc4s3)cc2nc1CC to have a lower QED value.
+  APIAR: valid=True, success=1, sim=0.8888888888888888
+  RePO:  valid=True, success=0, sim=1.0
+  APIAR original_qed=0.45879042932139036
+  RePO  original_qed=0.45879042932139036
+  APIAR generated_qed=0.4269493462749999
+  RePO  generated_qed=0.45879042932139036
+  APIAR qed_change=-0.03184108304639044
+  RePO  qed_change=0.0

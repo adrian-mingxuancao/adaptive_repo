@@ -196,3 +196,11 @@ class AdaRePOConfig(trl.GRPOConfig):
         default=1024,
         metadata={"help": "Morgan fingerprint bit length for ensemble input."},
     )
+
+    # ============================================================
+    # Baseline Controls
+    # ============================================================
+    disable_reference_guidance: bool = field(
+        default=False,
+        metadata={"help": "If True, disable all reference guidance (s_loss=0), producing a pure GRPO baseline."},
+    )

@@ -692,16 +692,21 @@ class AdaRePOTrainer(XGRPOTrainer):
 
         # Guidance loss (answer-level SFT on m_star)
         solution_ids, solution_mask = inputs["solution_ids"], inputs["solution_mask"]
-        input_ids_sol = torch.cat([prompt_ids, solution_ids], dim=1)
-        attention_mask_sol = torch.cat([prompt_mask, solution_mask], dim=1)
-        logits_to_keep_sol = solution_ids.size(1)
-        s_per_token_logps = self._get_per_token_logps(
-            model, input_ids_sol, attention_mask_sol, logits_to_keep_sol
-        )
-        # Per-sample guidance loss (Bug #2 fix: avoid batch-average before weighting)
-        per_sample_mask_sum = solution_mask.sum(dim=1).clamp(min=1e-4)  # (B,)
-        per_sample_s_loss = -(s_per_token_logps * solution_mask).sum(dim=1) / per_sample_mask_sum  # (B,)
-        s_loss_mean = per_sample_s_loss.mean()  # for logging only
+        _disable_ref = getattr(self.args, "disable_reference_guidance", False)
+        if not _disable_ref:
+            input_ids_sol = torch.cat([prompt_ids, solution_ids], dim=1)
+            attention_mask_sol = torch.cat([prompt_mask, solution_mask], dim=1)
+            logits_to_keep_sol = solution_ids.size(1)
+            s_per_token_logps = self._get_per_token_logps(
+                model, input_ids_sol, attention_mask_sol, logits_to_keep_sol
+            )
+            # Per-sample guidance loss (Bug #2 fix: avoid batch-average before weighting)
+            per_sample_mask_sum = solution_mask.sum(dim=1).clamp(min=1e-4)  # (B,)
+            per_sample_s_loss = -(s_per_token_logps * solution_mask).sum(dim=1) / per_sample_mask_sum  # (B,)
+            s_loss_mean = per_sample_s_loss.mean()  # for logging only
+        else:
+            per_sample_s_loss = torch.zeros(prompt_ids.size(0), device=prompt_ids.device)
+            s_loss_mean = torch.tensor(0.0, device=prompt_ids.device)
 
         # KL divergence
         ref_per_token_logps = inputs["ref_per_token_logps"]

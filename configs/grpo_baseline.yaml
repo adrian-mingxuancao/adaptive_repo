@@ -1,0 +1,87 @@
+# ==============================================
+# GRPO Baseline — pure RL, no reference guidance (s_loss disabled)
+# Same hyperparams as v16v17 baseline for fair comparison
+# ==============================================
+
+model_name_or_path: /lus/eagle/projects/IMPROVE_Aim1/caom/.cache/huggingface/Qwen2.5-3B-Instruct
+model_revision: main
+torch_dtype: bfloat16
+attn_implementation: sdpa
+
+dataset_name: data/OpenMolIns
+num_processes: 3
+
+data_scale: light
+subtask_selection: ["LogP", "MR", "QED"]
+
+bf16: true
+use_vllm: true
+vllm_device: auto
+vllm_gpu_memory_utilization: 0.6
+do_eval: false
+eval_strategy: "no"
+gradient_accumulation_steps: 16
+gradient_checkpointing: true
+gradient_checkpointing_kwargs:
+  use_reentrant: false
+learning_rate: 5.0e-06
+log_level: info
+logging_steps: 1
+logging_strategy: steps
+lr_scheduler_type: cosine
+max_prompt_length: 256
+num_generations: 3
+max_completion_length: 1024
+max_steps: 120
+num_train_epochs: 4
+output_dir: /lus/eagle/projects/IMPROVE_Aim1/caom/RePO/output/grpo_baseline
+overwrite_output_dir: true
+per_device_eval_batch_size: 2
+per_device_train_batch_size: 2
+push_to_hub: false
+report_to:
+  - wandb
+save_strategy: steps
+save_steps: 30
+save_total_limit: 5
+seed: 42
+warmup_ratio: 0.15
+
+wandb_project: "APIAR-baselines"
+wandb_entity: null
+
+log_rewards: true
+log_reward_breakdown: true
+reward_logging_steps: 1
+
+reward_funcs:
+  - smile_optimization
+reward_weights:
+  smile_optimization: 1.0
+
+property_name: "auto"
+similarity_weight: 0.5
+property_weight: 0.5
+min_similarity: 0.2
+
+cosine_min_value_wrong: 0.0
+cosine_max_value_wrong: 0.0
+cosine_min_value_correct: 0.5
+cosine_max_value_correct: 1.0
+cosine_max_len: 2048
+repetition_n_grams: 4
+repetition_max_penalty: -0.6
+validity_weight: 1.0
+atom_weight: 1.0
+bond_weight: 1.2
+functional_group_weight: 1.8
+similarity_threshold: 0.1
+n_bits: 1024
+reward_mode: "average"
+length_min_tokens: 100
+length_target_tokens: 500
+length_max_reward: 0.8
+length_reward_curve: "linear"
+
+# GRPO-specific: disable reference guidance
+disable_reference_guidance: true

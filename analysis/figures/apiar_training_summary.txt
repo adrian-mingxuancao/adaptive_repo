@@ -1,0 +1,20 @@
+Run Group              Metric                  Start  Last10Med  Last10Avg PeakSmooth
+-------------------------------------------------------------------------------------
+APIAR Full (v17)       reward                 0.4496     0.5799     1.0752     0.6201
+APIAR Full (v17)       loss                   0.7058     0.2345     0.2232     0.1517
+APIAR Full (v17)       beta_guide_mean        1.1093     0.9732     0.9323     0.2266
+APIAR Full (v17)       memory_bank/total_entries     0.0000   160.5833   160.2104    33.9361
+APIAR Full (v17)       frac_self_distill      0.0000     0.1719     0.1604     0.0382
+Beta-Only              reward                 0.4496     0.6087     0.6088     0.3243
+Beta-Only              loss                   0.7110     0.2031     0.2074     0.1533
+Beta-Only              beta_guide_mean        1.1093     0.9332     0.9391     0.2210
+Bank-Only              reward                 0.4496     0.7825     1.3727     0.4769
+Bank-Only              loss                   0.8719     0.3090     0.3070     0.1962
+Bank-Only              beta_guide_mean        1.0000     1.0000     1.0000     0.2000
+Bank-Only              memory_bank/total_entries     0.0000   189.1458   188.5771    40.0931
+Bank-Only              frac_self_distill      0.0000     0.2188     0.2052     0.0442
+Hard Data Full (v18)   reward                 0.3292     0.4033     0.3952     0.1126
+Hard Data Full (v18)   loss                   0.1922     0.0317     0.0373     0.0395
+Hard Data Full (v18)   beta_guide_mean        0.9080     0.8390     0.8409     0.1893
+Hard Data Full (v18)   memory_bank/total_entries     0.6250   128.2292   127.9062    26.5444
+Hard Data Full (v18)   frac_self_distill      0.0521     0.1146     0.1177     0.0313
